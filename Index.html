@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>EC Hot Map</title>
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background: #111827;
+            color: #f3f4f6;
+            font-family: Arial, sans-serif;
+        }
+
+        header {
+            padding: 16px;
+            background: #1f2937;
+            border-bottom: 1px solid #374151;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 22px;
+        }
+
+        header p {
+            margin: 5px 0 0;
+            color: #9ca3af;
+            font-size: 13px;
+        }
+
+        #map {
+            height: 55vh;
+            width: 100%;
+        }
+
+        .controls {
+            padding: 16px;
+            background: #1f2937;
+        }
+
+        .controls label {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        #timeline {
+            width: 100%;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px;
+            background: #374151;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        button:active {
+            background: #4b5563;
+        }
+
+        #timeDisplay {
+            font-size: 18px;
+            font-weight: bold;
+            color: #fbbf24;
+        }
+
+        #incidentCount {
+            margin-top: 12px;
+            color: #9ca3af;
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 12px;
+            font-size: 13px;
+        }
+
+        .legend span {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <h1>🗺️ EC Hot Map</h1>
+    <p>Elizabeth City, North Carolina | Incident Activity</p>
+</header>
+
+<div id="map"></div>
+
+<div class="controls">
+
+    <label for="timeline">
+        Time: <span id="timeDisplay">12:00 AM</span>
+    </label>
+
+    <input
+        type="range"
+        id="timeline"
+        min="0"
+        max="23"
+        value="0"
+    />
+
+    <div class="buttons">
+        <button id="playButton">▶ Play</button>
+        <button id="resetButton">↺ Reset</button>
+    </div>
+
+    <div id="incidentCount">
+        Incidents displayed: 0
+    </div>
+
+    <div class="legend">
+        <span><i class="dot" style="background:#ef4444"></i> Crime</span>
+        <span><i class="dot" style="background:#3b82f6"></i> Traffic</span>
+        <span><i class="dot" style="background:#f97316"></i> Fire</span>
+        <span><i class="dot" style="background:#a855f7"></i> Other</span>
+    </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+
+    // Initialize map centered on Elizabeth City
+
+    const map = L.map('map').setView([36.3004, -76.2248], 13);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+
+    // Sample incidents for testing
+    // These are fictional locations and events
+
+    const incidents = [
+        {
+            time: 2,
+            lat: 36.3004,
+            lng: -76.2248,
+            category: "crime",
+            description: "Sample incident"
+        },
+        {
+            time: 5,
+            lat: 36.3070,
+            lng: -76.2300,
+            category: "traffic",
+            description: "Sample traffic incident"
+        },
+        {
+            time: 8,
+            lat: 36.2950,
+            lng: -76.2150,
+            category: "fire",
+            description: "Sample fire incident"
+        },
+        {
+            time: 11,
+            lat: 36.3100,
+            lng: -76.2100,
+            category: "crime",
+            description: "Sample incident"
+        },
+        {
+            time: 14,
+            lat: 36.2900,
+            lng: -76.2300,
+            category: "traffic",
+            description: "Sample traffic incident"
+        },
+        {
+            time: 17,
+            lat: 36.3050,
+            lng: -76.2200,
+            category: "other",
+            description: "Sample incident"
+        },
+        {
+            time: 20,
+            lat: 36.2980,
+            lng: -76.2400,
+            category: "fire",
+            description: "Sample fire incident"
+        },
+        {
+            time: 22,
+            lat: 36.3150,
+            lng: -76.2250,
+            category: "crime",
+            description: "Sample incident"
+        }
+    ];
+
+
+    // Category colors
+
+    const colors = {
+        crime: "#ef4444",
+        traffic: "#3b82f6",
+        fire: "#f97316",
+        other: "#a855f7"
+    };
+
+
+    // Map display elements
+
+    let markers = [];
+    let currentHour = 0;
+    let playing = false;
+    let playInterval;
+
+
+    // Convert hour to readable time
+
+    function formatTime(hour) {
+
+        if (hour === 0) return "12:00 AM";
+
+        if (hour < 12) return hour + ":00 AM";
+
+        if (hour === 12) return "12:00 PM";
+
+        return (hour - 12) + ":00 PM";
+    }
+
+
+    // Update map based on selected time
+
+    function updateMap() {
+
+        // Remove old markers
+
+        markers.forEach(marker => map.removeLayer(marker));
+
+        markers = [];
+
+
+        // Display incidents that have occurred by selected hour
+
+        const visibleIncidents = incidents.filter(
+            incident => incident.time <= currentHour
+        );
+
+
+        // Create markers
+
+        visibleIncidents.forEach(incident => {
+
+            const marker = L.circleMarker(
+                [incident.lat, incident.lng],
+                {
+                    radius: 8,
+                    fillColor: colors[incident.category],
+                    color: "#ffffff",
+                    weight: 1,
+                    fillOpacity: 0.8
+                }
+            );
+
+            marker.bindPopup(
+                "<b>" + incident.category.toUpperCase() + "</b><br>" +
+                incident.description + "<br>" +
+                formatTime(incident.time)
+            );
+
+            marker.addTo(map);
+
+            markers.push(marker);
+
+        });
+
+
+        // Update interface
+
+        document.getElementById("timeDisplay").textContent =
+            formatTime(currentHour);
+
+        document.getElementById("incidentCount").textContent =
+            "Incidents displayed: " + visibleIncidents.length;
+
+    }
+
+
+    // Timeline slider
+
+    document.getElementById("timeline").addEventListener(
+        "input",
+        function() {
+
+            currentHour = Number(this.value);
+
+            updateMap();
+
+        }
+    );
+
+
+    // Playback
+
+    document.getElementById("playButton").addEventListener(
+        "click",
+        function() {
+
+            if (playing) {
+
+                clearInterval(playInterval);
+
+                playing = false;
+
+                this.textContent = "▶ Play";
+
+                return;
+
+            }
+
+
+            playing = true;
+
+            this.textContent = "⏸ Pause";
+
+
+            playInterval = setInterval(function() {
+
+                currentHour++;
+
+                if (currentHour > 23) {
+
+                    currentHour = 0;
+
+                }
+
+                document.getElementById("timeline").value =
+                    currentHour;
+
+                updateMap();
+
+            }, 1000);
+
+        }
+    );
+
+
+    // Reset timeline
+
+    document.getElementById("resetButton").addEventListener(
+        "click",
+        function() {
+
+            clearInterval(playInterval);
+
+            playing = false;
+
+            currentHour = 0;
+
+            document.getElementById("playButton").textContent =
+                "▶ Play";
+
+            document.getElementById("timeline").value = 0;
+
+            updateMap();
+
+        }
+    );
+
+
+    // Initial display
+
+    updateMap();
+
+</script>
+
+</body>
+  </html>
